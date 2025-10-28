@@ -1,47 +1,70 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Text;
-
-using MySql.Data.MySqlClient;
-using System.Data;
+﻿using MySql.Data.MySqlClient;
 using MMABooksBusinessClasses;
+using System;
+using System.Collections.Generic;
 
 namespace MMABooksDBClasses
 {
-    public static class CustomerDB
+    public static class CustomerDb
     {
-
-        public static Customer GetCustomer(int customerID)
+        // Add a new customer to the database
+        public static bool AddCustomer(Customer customer)
         {
             MySqlConnection connection = MMABooksDB.GetConnection();
-            string selectStatement
-                = "SELECT CustomerID, Name, Address, City, State, ZipCode "
-                + "FROM Customers "
-                + "WHERE CustomerID = @CustomerID";
-            MySqlCommand selectCommand =
-                new MySqlCommand(selectStatement, connection);
+            string insertStatement = "INSERT INTO Customers (Name, Address, City, State, ZipCode) "
+                                     + "VALUES (@Name, @Address, @City, @State, @ZipCode)";
+
+            MySqlCommand insertCommand = new MySqlCommand(insertStatement, connection);
+            insertCommand.Parameters.AddWithValue("@Name", customer.Name);
+            insertCommand.Parameters.AddWithValue("@Address", customer.Address);
+            insertCommand.Parameters.AddWithValue("@City", customer.City);
+            insertCommand.Parameters.AddWithValue("@State", customer.State);
+            insertCommand.Parameters.AddWithValue("@ZipCode", customer.ZipCode);
+
+            try
+            {
+                connection.Open();
+                insertCommand.ExecuteNonQuery();
+                return true;
+            }
+            catch (MySqlException ex)
+            {
+                throw ex;
+            }
+            finally
+            {
+                connection.Close();
+            }
+        }
+
+        // Get a customer by their ID
+        public static Customer GetCustomer(int customerID)
+        {
+            Customer customer = null;
+            MySqlConnection connection = MMABooksDB.GetConnection();
+            string selectStatement = "SELECT CustomerID, Name, Address, City, State, ZipCode "
+                                    + "FROM Customers "
+                                    + "WHERE CustomerID = @CustomerID";
+
+            MySqlCommand selectCommand = new MySqlCommand(selectStatement, connection);
             selectCommand.Parameters.AddWithValue("@CustomerID", customerID);
 
             try
             {
                 connection.Open();
-                MySqlDataReader custReader =
-                    selectCommand.ExecuteReader(CommandBehavior.SingleRow);
-                if (custReader.Read())
+                MySqlDataReader reader = selectCommand.ExecuteReader();
+                if (reader.Read())
                 {
-                    Customer customer = new Customer();
-                    customer.CustomerID = (int)custReader["CustomerID"];
-                    customer.Name = custReader["Name"].ToString();
-                    customer.Address = custReader["Address"].ToString();
-                    customer.City = custReader["City"].ToString();
-                    customer.State = custReader["State"].ToString();
-                    customer.ZipCode = custReader["ZipCode"].ToString();
-                    return customer;
+                    customer = new Customer(
+                        reader.GetInt32("CustomerID"),
+                        reader.GetString("Name"),
+                        reader.GetString("Address"),
+                        reader.GetString("City"),
+                        reader.GetString("State"),
+                        reader.GetString("ZipCode")
+                    );
                 }
-                else
-                {
-                    return null;
-                }
+                reader.Close();
             }
             catch (MySqlException ex)
             {
@@ -51,38 +74,71 @@ namespace MMABooksDBClasses
             {
                 connection.Close();
             }
+            return customer;
         }
 
-        public static int AddCustomer(Customer customer)
+        // Get a list of all customers
+        public static List<Customer> GetCustomers()
         {
+            List<Customer> customers = new List<Customer>();
             MySqlConnection connection = MMABooksDB.GetConnection();
-            string insertStatement =
-                "INSERT Customers " +
-                "(Name, Address, City, State, ZipCode) " +
-                "VALUES (@Name, @Address, @City, @State, @ZipCode)";
-            MySqlCommand insertCommand =
-                new MySqlCommand(insertStatement, connection);
-            insertCommand.Parameters.AddWithValue(
-                "@Name", customer.Name);
-            insertCommand.Parameters.AddWithValue(
-                "@Address", customer.Address);
-            insertCommand.Parameters.AddWithValue(
-                "@City", customer.City);
-            insertCommand.Parameters.AddWithValue(
-                "@State", customer.State);
-            insertCommand.Parameters.AddWithValue(
-                "@ZipCode", customer.ZipCode);
+            string selectStatement = "SELECT CustomerID, Name, Address, City, State, ZipCode "
+                                    + "FROM Customers "
+                                    + "ORDER BY Name";
+
+            MySqlCommand selectCommand = new MySqlCommand(selectStatement, connection);
+
             try
             {
                 connection.Open();
-                insertCommand.ExecuteNonQuery();
-                // MySQL specific code for getting last pk value
-                string selectStatement =
-                    "SELECT LAST_INSERT_ID()";
-                MySqlCommand selectCommand =
-                    new MySqlCommand(selectStatement, connection);
-                int customerID = Convert.ToInt32(selectCommand.ExecuteScalar());
-                return customerID;
+                MySqlDataReader reader = selectCommand.ExecuteReader();
+                while (reader.Read())
+                {
+                    Customer customer = new Customer(
+                        reader.GetInt32("CustomerID"),
+                        reader.GetString("Name"),
+                        reader.GetString("Address"),
+                        reader.GetString("City"),
+                        reader.GetString("State"),
+                        reader.GetString("ZipCode")
+                    );
+                    customers.Add(customer);
+                }
+                reader.Close();
+            }
+            catch (MySqlException ex)
+            {
+                throw ex;
+            }
+            finally
+            {
+                connection.Close();
+            }
+
+            return customers;
+        }
+
+        // Update a customer's details
+        public static bool UpdateCustomer(Customer customer)
+        {
+            MySqlConnection connection = MMABooksDB.GetConnection();
+            string updateStatement = "UPDATE Customers "
+                                    + "SET Name = @Name, Address = @Address, City = @City, State = @State, ZipCode = @ZipCode "
+                                    + "WHERE CustomerID = @CustomerID";
+
+            MySqlCommand updateCommand = new MySqlCommand(updateStatement, connection);
+            updateCommand.Parameters.AddWithValue("@CustomerID", customer.CustomerID);
+            updateCommand.Parameters.AddWithValue("@Name", customer.Name);
+            updateCommand.Parameters.AddWithValue("@Address", customer.Address);
+            updateCommand.Parameters.AddWithValue("@City", customer.City);
+            updateCommand.Parameters.AddWithValue("@State", customer.State);
+            updateCommand.Parameters.AddWithValue("@ZipCode", customer.ZipCode);
+
+            try
+            {
+                connection.Open();
+                int rowsAffected = updateCommand.ExecuteNonQuery();
+                return rowsAffected > 0;
             }
             catch (MySqlException ex)
             {
@@ -94,71 +150,30 @@ namespace MMABooksDBClasses
             }
         }
 
+        // Delete a customer from the database
         public static bool DeleteCustomer(Customer customer)
         {
-            // get a connection to the database
-            string deleteStatement =
-                "DELETE FROM Customers " +
-                "WHERE CustomerID = @CustomerID " +
-                "AND Name = @Name " +
-                "AND Address = @Address " +
-                "AND City = @City " +
-                "AND State = @State " +
-                "AND ZipCode = @ZipCode";
-            // set up the command object
+            MySqlConnection connection = MMABooksDB.GetConnection();
+            string deleteStatement = "DELETE FROM Customers "
+                                    + "WHERE CustomerID = @CustomerID";
+
+            MySqlCommand deleteCommand = new MySqlCommand(deleteStatement, connection);
+            deleteCommand.Parameters.AddWithValue("@CustomerID", customer.CustomerID);
 
             try
             {
-                // open the connection
-                // execute the command
-                // if the number of records returned = 1, return true otherwise return false
+                connection.Open();
+                int rowsAffected = deleteCommand.ExecuteNonQuery();
+                return rowsAffected > 0;
             }
             catch (MySqlException ex)
             {
-                // throw the exception
+                throw ex;
             }
             finally
             {
-                // close the connection
+                connection.Close();
             }
-
-            return false;
-        }
-
-        public static bool UpdateCustomer(Customer oldCustomer,
-            Customer newCustomer)
-        {
-            // create a connection
-            string updateStatement =
-                "UPDATE Customers SET " +
-                "Name = @NewName, " +
-                "Address = @NewAddress, " +
-                "City = @NewCity, " +
-                "State = @NewState, " +
-                "ZipCode = @NewZipCode " +
-                "WHERE CustomerID = @OldCustomerID " +
-                "AND Name = @OldName " +
-                "AND Address = @OldAddress " +
-                "AND City = @OldCity " +
-                "AND State = @OldState " +
-                "AND ZipCode = @OldZipCode";
-            // setup the command object
-            try
-            {
-                // open the connection
-                // execute the command
-                // if the number of records returned = 1, return true otherwise return false
-            }
-            catch (MySqlException ex)
-            {
-                // throw the exception
-            }
-            finally
-            {
-                // close the connection
-            }
-
-            return false;
         }
     }
 }
